@@ -13,6 +13,15 @@ const getDataPath = () => {
   return join(dataDir, 'pile-records.json')
 }
 
+const getProjectInfoPath = () => {
+  const userDataPath = app.getPath('userData')
+  const dataDir = join(userDataPath, 'data')
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true })
+  }
+  return join(dataDir, 'project-info.json')
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -92,5 +101,30 @@ ipcMain.handle('print-current-page', async () => {
       silent: false,
       printBackground: true,
     })
+  }
+})
+
+ipcMain.handle('save-project-info', async (_event, info) => {
+  try {
+    const filePath = getProjectInfoPath()
+    writeFileSync(filePath, JSON.stringify(info, null, 2), 'utf-8')
+    return { success: true }
+  } catch (error: any) {
+    console.error('保存项目信息失败:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('load-project-info', async () => {
+  try {
+    const filePath = getProjectInfoPath()
+    if (existsSync(filePath)) {
+      const data = readFileSync(filePath, 'utf-8')
+      return { success: true, data: JSON.parse(data) }
+    }
+    return { success: true, data: null }
+  } catch (error: any) {
+    console.error('加载项目信息失败:', error)
+    return { success: false, error: error.message, data: null }
   }
 })

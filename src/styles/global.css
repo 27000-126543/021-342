@@ -699,3 +699,261 @@ body {
 .btn:disabled {
   filter: grayscale(0.3);
 }
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-panel {
+  background: white;
+  border-radius: 10px;
+  width: 680px;
+  max-width: 92vw;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  color: white;
+}
+
+.modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.85;
+  padding: 0 4px;
+}
+
+.modal-close:hover {
+  opacity: 1;
+}
+
+.modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 24px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.project-header {
+  text-align: center;
+  border-bottom: 2px solid #1890ff;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.project-header .project-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 6px;
+}
+
+.project-header .project-meta {
+  font-size: 12px;
+  color: #595959;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.project-header .project-meta span {
+  white-space: nowrap;
+}
+
+.ledger-toolbar {
+  display: flex;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ledger-toolbar label {
+  font-size: 13px;
+  color: #595959;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ledger-toolbar input,
+.ledger-toolbar select {
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  min-width: 120px;
+}
+
+.ledger-toolbar .spacer {
+  flex: 1;
+}
+
+.ledger-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 16px 20px;
+  background: white;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.stat-card {
+  background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);
+  border-radius: 8px;
+  padding: 14px 16px;
+  border-left: 4px solid #1890ff;
+}
+
+.stat-card.secondary {
+  background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
+  border-left-color: #52c41a;
+}
+
+.stat-card.tertiary {
+  background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
+  border-left-color: #fa8c16;
+}
+
+.stat-card.quaternary {
+  background: linear-gradient(135deg, #f9f0ff 0%, #efdbff 100%);
+  border-left-color: #722ed1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #595959;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #262626;
+}
+
+.stat-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: #595959;
+  margin-left: 3px;
+}
+
+.ledger-table-wrap {
+  background: white;
+  flex: 1;
+  overflow: auto;
+}
+
+.ledger-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ledger-table th {
+  position: sticky;
+  top: 0;
+  background: #fafafa;
+  z-index: 1;
+  font-weight: 600;
+  color: #262626;
+  padding: 10px 12px;
+  border-bottom: 2px solid #e8e8e8;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ledger-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  white-space: nowrap;
+}
+
+.ledger-table tbody tr {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ledger-table tbody tr:hover {
+  background: #e6f7ff;
+}
+
+.ledger-table tbody tr.active {
+  background: #bae7ff;
+}
+
+.empty-state-row {
+  padding: 60px 20px !important;
+  text-align: center;
+  color: #bfbfbf;
+  cursor: default !important;
+}
+
+.empty-state-row:hover {
+  background: white !important;
+}
+
+.view-switch {
+  display: flex;
+  background: #f5f5f5;
+  border-radius: 6px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-switch button {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  color: #595959;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.view-switch button.active {
+  background: white;
+  color: #1890ff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  font-weight: 500;
+}

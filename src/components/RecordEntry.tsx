@@ -15,6 +15,7 @@ interface RecordEntryProps {
   records: PileRecord[]
   onSave: (record: PileRecord) => void
   onDelete: (id: string) => void
+  activeRecordId?: string | null
 }
 
 const requiredFields: (keyof PileRecord)[] = [
@@ -39,7 +40,7 @@ interface FormErrors {
   [key: string]: string
 }
 
-function RecordEntry({ records, onSave, onDelete }: RecordEntryProps) {
+function RecordEntry({ records, onSave, onDelete, activeRecordId: externalActiveId }: RecordEntryProps) {
   const [currentRecord, setCurrentRecord] = useState<PileRecord>({
     ...defaultPileRecord,
     id: generateId(),
@@ -48,6 +49,23 @@ function RecordEntry({ records, onSave, onDelete }: RecordEntryProps) {
   const [errors, setErrors] = useState<FormErrors>({})
   const [searchText, setSearchText] = useState('')
   const [showTips, setShowTips] = useState(true)
+
+  useEffect(() => {
+    if (externalActiveId && externalActiveId !== activeRecordId) {
+      const target = records.find(r => r.id === externalActiveId)
+      if (target) {
+        setCurrentRecord({ ...target })
+        setActiveRecordId(target.id)
+        setErrors({})
+      }
+    }
+  }, [externalActiveId, records])
+
+  const handleSelectRecord = (record: PileRecord) => {
+    setCurrentRecord({ ...record })
+    setActiveRecordId(record.id)
+    setErrors({})
+  }
 
   const filteredRecords = useMemo(() => {
     const sorted = [...records].sort((a, b) => {
@@ -158,12 +176,6 @@ function RecordEntry({ records, onSave, onDelete }: RecordEntryProps) {
       updatedAt: '',
     })
     setActiveRecordId(null)
-    setErrors({})
-  }
-
-  const handleSelectRecord = (record: PileRecord) => {
-    setCurrentRecord({ ...record })
-    setActiveRecordId(record.id)
     setErrors({})
   }
 

@@ -1,3 +1,25 @@
+export interface ProjectInfo {
+  projectName: string
+  constructionUnit: string
+  supervisionUnit: string
+  projectManager: string
+  technicalDirector: string
+  siteEngineer: string
+  supervisionEngineer: string
+  reportNo: string
+}
+
+export const defaultProjectInfo: ProjectInfo = {
+  projectName: '',
+  constructionUnit: '',
+  supervisionUnit: '',
+  projectManager: '',
+  technicalDirector: '',
+  siteEngineer: '',
+  supervisionEngineer: '',
+  reportNo: '',
+}
+
 export interface StratumRecord {
   depth: string
   stratum: string

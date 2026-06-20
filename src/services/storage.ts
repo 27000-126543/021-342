@@ -1,10 +1,12 @@
-import { PileRecord } from '../types/pileRecord'
+import { PileRecord, ProjectInfo } from '../types/pileRecord'
 
 declare global {
   interface Window {
     electronAPI?: {
       saveRecords: (records: PileRecord[]) => Promise<any>
       loadRecords: () => Promise<any>
+      saveProjectInfo: (info: ProjectInfo) => Promise<any>
+      loadProjectInfo: () => Promise<any>
       showSaveDialog: (options: any) => Promise<any>
       printPage: () => Promise<void>
     }
@@ -12,20 +14,20 @@ declare global {
 }
 
 const STORAGE_KEY = 'pile-records'
+const PROJECT_KEY = 'project-info'
 
 export const storageService = {
   async saveRecords(records: PileRecord[]): Promise<boolean> {
     try {
       if (window.electronAPI) {
-        const result = await window.electronAPI.saveRecords(records)
-        return result.success
+        return window.electronAPI.saveRecords(records).then((r: any) => r.success)
       } else {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
-        return true
+        return Promise.resolve(true)
       }
     } catch (error) {
       console.error('保存记录失败:', error)
-      return false
+      return Promise.resolve(false)
     }
   },
 
@@ -44,6 +46,38 @@ export const storageService = {
     } catch (error) {
       console.error('加载记录失败:', error)
       return []
+    }
+  },
+
+  async saveProjectInfo(info: ProjectInfo): Promise<boolean> {
+    try {
+      if (window.electronAPI) {
+        return window.electronAPI.saveProjectInfo(info).then((r: any) => r.success)
+      } else {
+        localStorage.setItem(PROJECT_KEY, JSON.stringify(info))
+        return Promise.resolve(true)
+      }
+    } catch (error) {
+      console.error('保存项目信息失败:', error)
+      return Promise.resolve(false)
+    }
+  },
+
+  async loadProjectInfo(): Promise<ProjectInfo | null> {
+    try {
+      if (window.electronAPI) {
+        const result = await window.electronAPI.loadProjectInfo()
+        if (result.success) {
+          return result.data || null
+        }
+        return null
+      } else {
+        const data = localStorage.getItem(PROJECT_KEY)
+        return data ? JSON.parse(data) : null
+      }
+    } catch (error) {
+      console.error('加载项目信息失败:', error)
+      return null
     }
   },
 
