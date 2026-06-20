@@ -4,6 +4,7 @@ import { storageService } from '../services/storage'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
 
 interface DataExportProps {
   records: PileRecord[]
@@ -31,10 +32,26 @@ function ProjectHeader({ info, title }: { info: ProjectInfo; title: string }) {
   )
 }
 
+function SignatureRow({ labels }: { labels: string[] }) {
+  return (
+    <div className="signature-row">
+      {labels.map(label => (
+        <div key={label} className="signature-item">
+          <div className="signature-label">{label}</div>
+          <div className="signature-line"></div>
+          <div className="signature-hint">签字</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function buildSinglePileHtml(r: PileRecord, info: ProjectInfo): string {
   const rockRows = r.strata
     .map((s, i) => `<tr><td style="padding:6px 8px;border:1px solid #d9d9d9;text-align:center;">${i + 1}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${s.depth || '-'}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${s.stratum || '-'}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${s.description || '-'}</td></tr>`)
     .join('')
+  const siteLabel = info.siteEngineer ? `施工员（${info.siteEngineer}）` : '施工员'
+  const supLabel = info.supervisionEngineer ? `监理工程师（${info.supervisionEngineer}）` : '监理工程师'
   return `
 <div style="width:794px;padding:30px;background:#fff;font-family:'Microsoft YaHei','微软雅黑',sans-serif;color:#333;font-size:13px;box-sizing:border-box;">
   ${info.projectName ? `<div style="text-align:center;font-size:18px;font-weight:700;margin-bottom:6px;">${info.projectName}</div>` : ''}
@@ -55,8 +72,6 @@ function buildSinglePileHtml(r: PileRecord, info: ProjectInfo): string {
       <tr><th style="text-align:right;background:#fafafa;padding:6px 8px;border:1px solid #d9d9d9;font-weight:500;">设计桩径</th><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.designPileDiameter} mm</td><th style="text-align:right;background:#fafafa;padding:6px 8px;border:1px solid #d9d9d9;font-weight:500;">设计桩长</th><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.designPileDepth} m</td></tr>
       <tr><th style="text-align:right;background:#fafafa;padding:6px 8px;border:1px solid #d9d9d9;font-weight:500;">实际桩长</th><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.actualPileDepth} m</td><th style="text-align:right;background:#fafafa;padding:6px 8px;border:1px solid #d9d9d9;font-weight:500;">入岩深度</th><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.rockEntryDepth} m</td></tr>
       <tr><th style="text-align:right;background:#fafafa;padding:6px 8px;border:1px solid #d9d9d9;font-weight:500;">混凝土等级</th><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.concreteGrade}</td><th style="text-align:right;background:#fafafa;padding:6px 8px;border:1px solid #d9d9d9;font-weight:500;">灌注方量</th><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.concreteVolume} m&sup3;</td></tr>
-      <tr><th style="text-align:right;background:#fafafa;padding:6px 8px;border:1px solid #d9d9d9;font-weight:500;">灌注开始</th><td colspan="3" style="padding:6px 8px;border:1px solid #d9d9d9;">${r.concreteStartDate} ${r.concreteStartTime}</td></tr>
-      <tr><th style="text-align:right;background:#fafafa;padding:6px 8px;border:1px solid #d9d9d9;font-weight:500;">灌注结束</th><td colspan="3" style="padding:6px 8px;border:1px solid #d9d9d9;">${r.concreteEndDate} ${r.concreteEndTime}</td></tr>
     </tbody>
   </table>
   <div style="font-size:14px;font-weight:600;margin:14px 0 6px;padding-left:8px;border-left:3px solid #1890ff;">地层变化记录</div>
@@ -65,9 +80,9 @@ function buildSinglePileHtml(r: PileRecord, info: ProjectInfo): string {
     <tbody>${rockRows}</tbody>
   </table>
   <div style="display:flex;justify-content:space-around;margin-top:40px;padding-top:16px;border-top:1px solid #f0f0f0;">
-    <div style="text-align:center;"><div>施工员${info.siteEngineer ? '（' + info.siteEngineer + '）' : ''}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
+    <div style="text-align:center;"><div>${siteLabel}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
     <div style="text-align:center;"><div>质检员</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
-    <div style="text-align:center;"><div>监理工程师${info.supervisionEngineer ? '（' + info.supervisionEngineer + '）' : ''}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
+    <div style="text-align:center;"><div>${supLabel}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
   </div>
 </div>`
 }
@@ -101,6 +116,22 @@ async function elementToPdf(element: HTMLElement, pdf: jsPDF, firstPage: boolean
   return true
 }
 
+async function recordToPdfBlob(r: PileRecord, info: ProjectInfo): Promise<Blob> {
+  const tempDiv = document.createElement('div')
+  tempDiv.style.position = 'absolute'
+  tempDiv.style.left = '-9999px'
+  tempDiv.style.top = '-9999px'
+  tempDiv.innerHTML = buildSinglePileHtml(r, info)
+  document.body.appendChild(tempDiv)
+  try {
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    await elementToPdf(tempDiv, pdf, true)
+    return pdf.output('blob')
+  } finally {
+    document.body.removeChild(tempDiv)
+  }
+}
+
 function DataExport({ records, projectInfo }: DataExportProps) {
   const [activeTab, setActiveTab] = useState<TabType>('single')
   const [selectedPileId, setSelectedPileId] = useState<string>('')
@@ -109,6 +140,9 @@ function DataExport({ records, projectInfo }: DataExportProps) {
   )
   const [batchDateFrom, setBatchDateFrom] = useState<string>('')
   const [batchDateTo, setBatchDateTo] = useState<string>('')
+  const [batchPileKeyword, setBatchPileKeyword] = useState<string>('')
+  const [batchPileStart, setBatchPileStart] = useState<string>('')
+  const [batchPileEnd, setBatchPileEnd] = useState<string>('')
   const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set())
   const [isExporting, setIsExporting] = useState(false)
   const previewWrapRef = useRef<HTMLDivElement>(null)
@@ -135,9 +169,12 @@ function DataExport({ records, projectInfo }: DataExportProps) {
     return sortedRecords.filter(r => {
       if (batchDateFrom && r.drillDate < batchDateFrom) return false
       if (batchDateTo && r.drillDate > batchDateTo) return false
+      if (batchPileKeyword && !r.pileNo.toLowerCase().includes(batchPileKeyword.toLowerCase())) return false
+      if (batchPileStart && r.pileNo < batchPileStart) return false
+      if (batchPileEnd && r.pileNo > batchPileEnd) return false
       return true
     })
-  }, [sortedRecords, batchDateFrom, batchDateTo])
+  }, [sortedRecords, batchDateFrom, batchDateTo, batchPileKeyword, batchPileStart, batchPileEnd])
 
   const canExportSingle = activeTab === 'single' && !!selectedRecord
   const canExportConcrete = activeTab === 'concrete' && sortedRecords.length > 0
@@ -207,7 +244,7 @@ function DataExport({ records, projectInfo }: DataExportProps) {
     }
   }
 
-  const handleBatchPDF = async () => {
+  const handleBatchMergedPDF = async () => {
     if (!canExportBatch) {
       alert(getEmptyTip())
       return
@@ -230,10 +267,43 @@ function DataExport({ records, projectInfo }: DataExportProps) {
           document.body.removeChild(tempDiv)
         }
       }
-      pdf.save(getExportFileName() + '.pdf')
+      pdf.save(getExportFileName() + '_合并版.pdf')
     } catch (err) {
       console.error('批量PDF导出失败：', err)
       alert('批量导出失败，请重试')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleBatchSeparatePDFZip = async () => {
+    if (!canExportBatch) {
+      alert(getEmptyTip())
+      return
+    }
+    setIsExporting(true)
+    try {
+      const list = sortedRecords.filter(r => selectedBatchIds.has(r.id))
+      const zip = new JSZip()
+      const folder = zip.folder('单桩施工记录')
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i]
+        const blob = await recordToPdfBlob(r, projectInfo)
+        const fileName = `${r.drillDate}_${r.pileNo}_单桩施工记录.pdf`
+        folder?.file(fileName, blob)
+      }
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const url = URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = getExportFileName() + '_分桩包.zip'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('分桩PDF打包失败：', err)
+      alert('分桩打包失败，请重试')
     } finally {
       setIsExporting(false)
     }
@@ -348,13 +418,25 @@ function DataExport({ records, projectInfo }: DataExportProps) {
     })
   }
 
-  const toggleAllBatch = () => {
-    if (selectedBatchIds.size === batchCandidate.length && batchCandidate.length > 0) {
-      setSelectedBatchIds(new Set())
-    } else {
-      setSelectedBatchIds(new Set(batchCandidate.map(r => r.id)))
-    }
+  const toggleAllFiltered = () => {
+    const filteredIds = batchCandidate.map(r => r.id)
+    const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedBatchIds.has(id))
+    setSelectedBatchIds(prev => {
+      const next = new Set(prev)
+      if (allSelected) {
+        filteredIds.forEach(id => next.delete(id))
+      } else {
+        filteredIds.forEach(id => next.add(id))
+      }
+      return next
+    })
   }
+
+  const allFilteredSelected = batchCandidate.length > 0 && batchCandidate.every(r => selectedBatchIds.has(r.id))
+
+  const siteLabel = projectInfo.siteEngineer ? `施工员（${projectInfo.siteEngineer}）` : '施工员'
+  const techLabel = projectInfo.technicalDirector ? `技术负责人（${projectInfo.technicalDirector}）` : '技术负责人'
+  const supLabel = projectInfo.supervisionEngineer ? `监理工程师（${projectInfo.supervisionEngineer}）` : '监理工程师'
 
   const renderSinglePile = () => {
     if (!selectedRecord) {
@@ -445,7 +527,7 @@ function DataExport({ records, projectInfo }: DataExportProps) {
 
         <div className="signature-row">
           <div className="signature-item">
-            <div className="signature-label">施工员{projectInfo.siteEngineer ? '（' + projectInfo.siteEngineer + '）' : ''}</div>
+            <div className="signature-label">{siteLabel}</div>
             <div className="signature-line"></div>
             <div className="signature-hint">签字</div>
           </div>
@@ -455,7 +537,7 @@ function DataExport({ records, projectInfo }: DataExportProps) {
             <div className="signature-hint">签字</div>
           </div>
           <div className="signature-item">
-            <div className="signature-label">监理工程师{projectInfo.supervisionEngineer ? '（' + projectInfo.supervisionEngineer + '）' : ''}</div>
+            <div className="signature-label">{supLabel}</div>
             <div className="signature-line"></div>
             <div className="signature-hint">签字</div>
           </div>
@@ -511,6 +593,24 @@ function DataExport({ records, projectInfo }: DataExportProps) {
             </tr>
           </tfoot>
         </table>
+
+        <div className="signature-row">
+          <div className="signature-item">
+            <div className="signature-label">{siteLabel}</div>
+            <div className="signature-line"></div>
+            <div className="signature-hint">签字</div>
+          </div>
+          <div className="signature-item">
+            <div className="signature-label">{techLabel}</div>
+            <div className="signature-line"></div>
+            <div className="signature-hint">签字</div>
+          </div>
+          <div className="signature-item">
+            <div className="signature-label">{supLabel}</div>
+            <div className="signature-line"></div>
+            <div className="signature-hint">签字</div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -575,12 +675,12 @@ function DataExport({ records, projectInfo }: DataExportProps) {
             <div className="signature-hint">签字</div>
           </div>
           <div className="signature-item">
-            <div className="signature-label">技术负责人{projectInfo.technicalDirector ? '（' + projectInfo.technicalDirector + '）' : ''}</div>
+            <div className="signature-label">{techLabel}</div>
             <div className="signature-line"></div>
             <div className="signature-hint">签字</div>
           </div>
           <div className="signature-item">
-            <div className="signature-label">监理工程师{projectInfo.supervisionEngineer ? '（' + projectInfo.supervisionEngineer + '）' : ''}</div>
+            <div className="signature-label">{supLabel}</div>
             <div className="signature-line"></div>
             <div className="signature-hint">签字</div>
           </div>
@@ -593,26 +693,74 @@ function DataExport({ records, projectInfo }: DataExportProps) {
     <div>
       <ProjectHeader info={projectInfo} title="批量导出单桩施工记录" />
       <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '10px 14px', borderRadius: '6px', marginBottom: '16px', fontSize: '13px' }}>
-        <div>筛选出 <strong>{batchCandidate.length}</strong> 根桩，已勾选 <strong style={{ color: '#52c41a' }}>{selectedBatchIds.size}</strong> 根。
-          批量导出会把选中的所有桩合并成一份 PDF（每根桩一页），并生成每桩一个 Sheet 的 Excel 文件。</div>
+        <div>共 <strong>{batchCandidate.length}</strong> 根桩符合筛选条件，已勾选 <strong style={{ color: '#52c41a' }}>{selectedBatchIds.size}</strong> 根（全库共 {sortedRecords.length} 根）。
+          批量导出支持：① 合并 PDF（所有桩一页一份文件）；② 分桩 PDF 压缩包（每桩一份，文件名按日期+桩号命名）；③ Excel（每桩一个 Sheet + 汇总 Sheet）。
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: '13px', color: '#595959' }}>施工日期：</label>
-        <input type="date" value={batchDateFrom} onChange={e => setBatchDateFrom(e.target.value)} />
-        <span style={{ color: '#8c8c8c' }}>至</span>
-        <input type="date" value={batchDateTo} onChange={e => setBatchDateTo(e.target.value)} />
-        <button className="btn btn-sm" onClick={() => { setBatchDateFrom(''); setBatchDateTo('') }}>清除日期</button>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap', rowGap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label style={{ fontSize: '13px', color: '#595959' }}>施工日期：</label>
+          <input type="date" value={batchDateFrom} onChange={e => setBatchDateFrom(e.target.value)} style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px' }} />
+          <span style={{ color: '#8c8c8c' }}>至</span>
+          <input type="date" value={batchDateTo} onChange={e => setBatchDateTo(e.target.value)} style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px' }} />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label style={{ fontSize: '13px', color: '#595959' }}>桩号关键字：</label>
+          <input
+            type="text"
+            placeholder="如：ZK"
+            value={batchPileKeyword}
+            onChange={e => setBatchPileKeyword(e.target.value)}
+            style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px', width: '120px' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <label style={{ fontSize: '13px', color: '#595959' }}>桩号范围：</label>
+          <input
+            type="text"
+            placeholder="起始"
+            value={batchPileStart}
+            onChange={e => setBatchPileStart(e.target.value)}
+            style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px', width: '90px' }}
+          />
+          <span style={{ color: '#8c8c8c' }}>~</span>
+          <input
+            type="text"
+            placeholder="截止"
+            value={batchPileEnd}
+            onChange={e => setBatchPileEnd(e.target.value)}
+            style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px', width: '90px' }}
+          />
+        </div>
+
+        <button
+          className="btn btn-sm"
+          onClick={() => { setBatchDateFrom(''); setBatchDateTo(''); setBatchPileKeyword(''); setBatchPileStart(''); setBatchPileEnd('') }}
+        >
+          清除筛选
+        </button>
+
         <div style={{ flex: 1 }} />
-        <button className="btn btn-sm" onClick={toggleAllBatch}>
-          {selectedBatchIds.size === batchCandidate.length && batchCandidate.length > 0 ? '取消全选' : '全选'}
+
+        <button className="btn btn-sm" onClick={toggleAllFiltered}>
+          {allFilteredSelected ? '取消全选' : '全选当前'}
         </button>
       </div>
 
       <table className="record-table" style={{ marginBottom: '16px' }}>
         <thead>
           <tr>
-            <th style={{ width: '50px' }}>选择</th>
+            <th style={{ width: '50px' }}>
+              <input
+                type="checkbox"
+                checked={allFilteredSelected}
+                onChange={toggleAllFiltered}
+                style={{ width: '16px', height: '16px' }}
+              />
+            </th>
             <th>桩号</th>
             <th>钻孔日期</th>
             <th>施工班组</th>
@@ -721,22 +869,54 @@ function DataExport({ records, projectInfo }: DataExportProps) {
         >
           🖨 打印
         </button>
-        <button
-          className="btn btn-primary"
-          onClick={activeTab === 'batch' ? handleBatchPDF : handleExportPDF}
-          disabled={!canExport || isExporting}
-          style={{ opacity: !canExport ? 0.5 : 1, cursor: !canExport ? 'not-allowed' : 'pointer' }}
-        >
-          {isExporting ? '⏳ 导出中...' : '📄 导出PDF'}
-        </button>
-        <button
-          className="btn btn-success"
-          onClick={handleExportExcel}
-          disabled={!canExport || isExporting}
-          style={{ opacity: !canExport ? 0.5 : 1, cursor: !canExport ? 'not-allowed' : 'pointer' }}
-        >
-          📊 导出Excel
-        </button>
+
+        {activeTab === 'batch' ? (
+          <>
+            <button
+              className="btn btn-primary"
+              onClick={handleBatchMergedPDF}
+              disabled={!canExportBatch || isExporting}
+              style={{ opacity: !canExportBatch ? 0.5 : 1, cursor: !canExportBatch ? 'not-allowed' : 'pointer' }}
+            >
+              {isExporting ? '⏳ 导出中...' : '📄 合并PDF'}
+            </button>
+            <button
+              className="btn"
+              onClick={handleBatchSeparatePDFZip}
+              disabled={!canExportBatch || isExporting}
+              style={{ opacity: !canExportBatch ? 0.5 : 1, cursor: !canExportBatch ? 'not-allowed' : 'pointer' }}
+            >
+              📦 分桩PDF包
+            </button>
+            <button
+              className="btn btn-success"
+              onClick={handleExportExcel}
+              disabled={!canExportBatch || isExporting}
+              style={{ opacity: !canExportBatch ? 0.5 : 1, cursor: !canExportBatch ? 'not-allowed' : 'pointer' }}
+            >
+              📊 导出Excel
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="btn btn-primary"
+              onClick={handleExportPDF}
+              disabled={!canExport || isExporting}
+              style={{ opacity: !canExport ? 0.5 : 1, cursor: !canExport ? 'not-allowed' : 'pointer' }}
+            >
+              {isExporting ? '⏳ 导出中...' : '📄 导出PDF'}
+            </button>
+            <button
+              className="btn btn-success"
+              onClick={handleExportExcel}
+              disabled={!canExport || isExporting}
+              style={{ opacity: !canExport ? 0.5 : 1, cursor: !canExport ? 'not-allowed' : 'pointer' }}
+            >
+              📊 导出Excel
+            </button>
+          </>
+        )}
       </div>
 
       <div className="export-preview" ref={previewWrapRef}>

@@ -40,4 +40,9 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
+  server: {
+    watch: {
+      ignored: ['**/release/**', '**/dist/**', '**/dist-electron/**'],
+    },
+  },
 })
