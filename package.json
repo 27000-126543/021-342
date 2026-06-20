@@ -9,7 +9,9 @@
     "dev:electron": "cross-env USE_ELECTRON=true vite",
     "build": "tsc && vite build",
     "build:web": "tsc && vite build",
-    "build:electron": "cross-env USE_ELECTRON=true tsc && vite build && electron-builder",
+    "build:electron-only": "cross-env USE_ELECTRON=true vite build",
+    "build:electron": "npm run build:electron-only && electron-builder",
+    "build:portable": "npm run build:electron-only && electron-builder --win portable",
     "preview": "vite preview",
     "start": "electron .",
     "typecheck": "tsc --noEmit"
@@ -40,12 +42,34 @@
       "output": "release"
     },
     "files": [
-      "dist",
-      "dist-electron"
+      "dist/**/*",
+      "dist-electron/**/*"
     ],
+    "extraMetadata": {
+      "main": "dist-electron/main.js"
+    },
     "win": {
-      "target": "nsis",
-      "icon": "build/icon.ico"
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        },
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "桩基施工记录系统"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-便携版.${ext}"
     }
   }
 }
