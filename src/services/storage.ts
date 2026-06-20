@@ -1,4 +1,4 @@
-import { PileRecord, ProjectInfo } from '../types/pileRecord'
+import { PileRecord, ProjectInfo, ArchiveBatch } from '../types/pileRecord'
 
 declare global {
   interface Window {
@@ -7,6 +7,8 @@ declare global {
       loadRecords: () => Promise<any>
       saveProjectInfo: (info: ProjectInfo) => Promise<any>
       loadProjectInfo: () => Promise<any>
+      saveArchiveBatches: (batches: ArchiveBatch[]) => Promise<any>
+      loadArchiveBatches: () => Promise<any>
       showSaveDialog: (options: any) => Promise<any>
       printPage: () => Promise<void>
     }
@@ -15,6 +17,7 @@ declare global {
 
 const STORAGE_KEY = 'pile-records'
 const PROJECT_KEY = 'project-info'
+const BATCHES_KEY = 'archive-batches'
 
 export const storageService = {
   async saveRecords(records: PileRecord[]): Promise<boolean> {
@@ -93,6 +96,38 @@ export const storageService = {
       return window.electronAPI.printPage()
     } else {
       window.print()
+    }
+  },
+
+  async saveArchiveBatches(batches: ArchiveBatch[]): Promise<boolean> {
+    try {
+      if (window.electronAPI) {
+        return window.electronAPI.saveArchiveBatches(batches).then((r: any) => r.success)
+      } else {
+        localStorage.setItem(BATCHES_KEY, JSON.stringify(batches))
+        return Promise.resolve(true)
+      }
+    } catch (error) {
+      console.error('保存归档批次失败:', error)
+      return Promise.resolve(false)
+    }
+  },
+
+  async loadArchiveBatches(): Promise<ArchiveBatch[]> {
+    try {
+      if (window.electronAPI) {
+        const result = await window.electronAPI.loadArchiveBatches()
+        if (result.success) {
+          return result.data || []
+        }
+        return []
+      } else {
+        const data = localStorage.getItem(BATCHES_KEY)
+        return data ? JSON.parse(data) : []
+      }
+    } catch (error) {
+      console.error('加载归档批次失败:', error)
+      return []
     }
   },
 }

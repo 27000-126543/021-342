@@ -22,6 +22,15 @@ const getProjectInfoPath = () => {
   return join(dataDir, 'project-info.json')
 }
 
+const getArchiveBatchesPath = () => {
+  const userDataPath = app.getPath('userData')
+  const dataDir = join(userDataPath, 'data')
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true })
+  }
+  return join(dataDir, 'archive-batches.json')
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -126,5 +135,30 @@ ipcMain.handle('load-project-info', async () => {
   } catch (error: any) {
     console.error('加载项目信息失败:', error)
     return { success: false, error: error.message, data: null }
+  }
+})
+
+ipcMain.handle('save-archive-batches', async (_event, batches) => {
+  try {
+    const filePath = getArchiveBatchesPath()
+    writeFileSync(filePath, JSON.stringify(batches, null, 2), 'utf-8')
+    return { success: true }
+  } catch (error: any) {
+    console.error('保存归档批次失败:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('load-archive-batches', async () => {
+  try {
+    const filePath = getArchiveBatchesPath()
+    if (existsSync(filePath)) {
+      const data = readFileSync(filePath, 'utf-8')
+      return { success: true, data: JSON.parse(data) }
+    }
+    return { success: true, data: [] }
+  } catch (error: any) {
+    console.error('加载归档批次失败:', error)
+    return { success: false, error: error.message, data: [] }
   }
 })

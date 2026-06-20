@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import RecordEntry from './components/RecordEntry'
 import DataExport from './components/DataExport'
 import ProjectInfoModal from './components/ProjectInfoModal'
-import { PileRecord, ProjectInfo, defaultProjectInfo } from './types/pileRecord'
+import { PileRecord, ProjectInfo, defaultProjectInfo, ArchiveBatch } from './types/pileRecord'
 import { storageService } from './services/storage'
 
 type TabType = 'entry' | 'ledger' | 'export'
@@ -11,6 +11,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('entry')
   const [records, setRecords] = useState<PileRecord[]>([])
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>(defaultProjectInfo)
+  const [archiveBatches, setArchiveBatches] = useState<ArchiveBatch[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const [showProjectModal, setShowProjectModal] = useState(false)
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null)
@@ -18,14 +19,16 @@ function App() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [recordsData, projectData] = await Promise.all([
+      const [recordsData, projectData, batchesData] = await Promise.all([
         storageService.loadRecords(),
         storageService.loadProjectInfo(),
+        storageService.loadArchiveBatches(),
       ])
       setRecords(recordsData)
       if (projectData) {
         setProjectInfo(projectData)
       }
+      setArchiveBatches(batchesData)
       setIsLoaded(true)
     }
     loadData()
@@ -42,6 +45,12 @@ function App() {
       storageService.saveProjectInfo(projectInfo)
     }
   }, [projectInfo, isLoaded])
+
+  useEffect(() => {
+    if (isLoaded) {
+      storageService.saveArchiveBatches(archiveBatches)
+    }
+  }, [archiveBatches, isLoaded])
 
   const handleSaveRecord = (record: PileRecord) => {
     setRecords(prev => {
@@ -71,12 +80,17 @@ function App() {
     alert('项目信息已保存，导出资料将自动带出。')
   }
 
+  const handleSaveArchiveBatch = (batch: ArchiveBatch) => {
+    setArchiveBatches(prev => [batch, ...prev])
+  }
+
   const handleExportData = () => {
     const exportObj = {
       projectInfo,
       records,
+      archiveBatches,
       exportedAt: new Date().toISOString(),
-      version: 1,
+      version: 2,
     }
     const dataStr = JSON.stringify(exportObj, null, 2)
     const blob = new Blob([dataStr], { type: 'application/json' })
@@ -104,10 +118,12 @@ function App() {
         const parsed = JSON.parse(e.target?.result as string)
         let importedRecords: PileRecord[] = []
         let importedProject: ProjectInfo | null = null
+        let importedBatches: ArchiveBatch[] = []
 
         if (parsed && Array.isArray(parsed.records)) {
           importedRecords = parsed.records
           if (parsed.projectInfo) importedProject = parsed.projectInfo
+          if (Array.isArray(parsed.archiveBatches)) importedBatches = parsed.archiveBatches
         } else if (Array.isArray(parsed)) {
           importedRecords = parsed
         }
@@ -120,7 +136,14 @@ function App() {
             if (importedProject && !projectInfo.projectName) {
               setProjectInfo(importedProject)
             }
-            alert(`成功导入 ${newRecords.length} 条新记录`)
+            let importedBatchCount = 0
+            if (importedBatches.length > 0) {
+              const existingBatchIds = new Set(archiveBatches.map(b => b.id))
+              const newBatches = importedBatches.filter(b => !existingBatchIds.has(b.id))
+              importedBatchCount = newBatches.length
+              setArchiveBatches(prev => [...prev, ...newBatches])
+            }
+            alert(`成功导入 ${newRecords.length} 条新记录${importedBatchCount > 0 ? `，${importedBatchCount} 个归档批次` : ''}`)
           }
         } else {
           alert('文件中没有可导入的记录')
@@ -217,6 +240,7 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <LedgerView
                 records={records}
+                archiveBatches={archiveBatches}
                 onSelectRecord={handleSelectRecord}
               />
             </div>
@@ -226,6 +250,7 @@ function App() {
           <DataExport
             records={records}
             projectInfo={projectInfo}
+            onSaveArchiveBatch={handleSaveArchiveBatch}
           />
         )}
       </main>

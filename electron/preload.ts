@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadRecords: () => ipcRenderer.invoke('load-records'),
   saveProjectInfo: (info: any) => ipcRenderer.invoke('save-project-info', info),
   loadProjectInfo: () => ipcRenderer.invoke('load-project-info'),
+  saveArchiveBatches: (batches: any[]) => ipcRenderer.invoke('save-archive-batches', batches),
+  loadArchiveBatches: () => ipcRenderer.invoke('load-archive-batches'),
   showSaveDialog: (options: any) => ipcRenderer.invoke('save-file-dialog', options),
   printPage: () => ipcRenderer.invoke('print-current-page'),
 })

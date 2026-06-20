@@ -1,17 +1,19 @@
 import { useState, useMemo } from 'react'
-import { PileRecord } from '../types/pileRecord'
+import { PileRecord, ArchiveBatch, naturalCompare } from '../types/pileRecord'
 
 interface Props {
   records: PileRecord[]
+  archiveBatches?: ArchiveBatch[]
   onSelectRecord: (id: string) => void
 }
 
-function LedgerView({ records, onSelectRecord }: Props) {
+function LedgerView({ records, archiveBatches = [], onSelectRecord }: Props) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [teamFilter, setTeamFilter] = useState('')
   const [machineFilter, setMachineFilter] = useState('')
   const [pileKeyword, setPileKeyword] = useState('')
+  const [batchFilter, setBatchFilter] = useState('')
 
   const uniqueTeams = useMemo(() => {
     const s = new Set<string>()
@@ -25,6 +27,12 @@ function LedgerView({ records, onSelectRecord }: Props) {
     return Array.from(s).sort()
   }, [records])
 
+  const batchPileIds = useMemo(() => {
+    if (!batchFilter) return null
+    const b = archiveBatches.find(x => x.id === batchFilter)
+    return b ? new Set(b.pileIds) : null
+  }, [archiveBatches, batchFilter])
+
   const filtered = useMemo(() => {
     return records.filter(r => {
       if (dateFrom && r.drillDate < dateFrom) return false
@@ -32,12 +40,13 @@ function LedgerView({ records, onSelectRecord }: Props) {
       if (teamFilter && r.constructionTeam !== teamFilter) return false
       if (machineFilter && r.machineType !== machineFilter) return false
       if (pileKeyword && !r.pileNo.toLowerCase().includes(pileKeyword.toLowerCase())) return false
+      if (batchPileIds && !batchPileIds.has(r.id)) return false
       return true
     }).sort((a, b) => {
-      if (a.drillDate === b.drillDate) return a.pileNo.localeCompare(b.pileNo)
+      if (a.drillDate === b.drillDate) return naturalCompare(a.pileNo, b.pileNo)
       return a.drillDate.localeCompare(b.drillDate)
     })
-  }, [records, dateFrom, dateTo, teamFilter, machineFilter, pileKeyword])
+  }, [records, dateFrom, dateTo, teamFilter, machineFilter, pileKeyword, batchPileIds])
 
   const stats = useMemo(() => {
     const total = filtered.length
@@ -55,10 +64,26 @@ function LedgerView({ records, onSelectRecord }: Props) {
     setTeamFilter('')
     setMachineFilter('')
     setPileKeyword('')
+    setBatchFilter('')
   }
+
+  const sortedBatches = useMemo(() => {
+    return [...archiveBatches].sort((a, b) => b.exportedAt.localeCompare(a.exportedAt))
+  }, [archiveBatches])
+
+  const selectedBatch = batchFilter ? archiveBatches.find(b => b.id === batchFilter) : null
 
   return (
     <>
+      {selectedBatch && (
+        <div style={{ background: '#e6f4ff', border: '1px solid #91caff', padding: '10px 14px', borderRadius: '6px', margin: '12px 16px 0', fontSize: '13px' }}>
+          <strong style={{ color: '#0958d9' }}>📋 批次回看：</strong>
+          <span style={{ margin: '0 8px' }}>{selectedBatch.batchName}</span>
+          {selectedBatch.reportDate && <span style={{ color: '#595959', marginRight: '8px' }}>报验日期：{selectedBatch.reportDate}</span>}
+          <span style={{ color: '#595959', marginRight: '8px' }}>共 {selectedBatch.pileNos.length} 根桩</span>
+          {selectedBatch.remarks && <span style={{ color: '#595959' }}>（{selectedBatch.remarks}）</span>}
+        </div>
+      )}
       <div className="ledger-toolbar">
         <label>
           施工日期
@@ -108,6 +133,22 @@ function LedgerView({ records, onSelectRecord }: Props) {
             onChange={e => setPileKeyword(e.target.value)}
             style={{ minWidth: '140px' }}
           />
+        </label>
+
+        <label>
+          报验批次
+          <select
+            value={batchFilter}
+            onChange={e => setBatchFilter(e.target.value)}
+            style={{ minWidth: '170px' }}
+          >
+            <option value="">全部</option>
+            {sortedBatches.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.batchName}（{b.pileNos.length}根 · {b.reportDate || b.exportedAt.slice(0, 10)}）
+              </option>
+            ))}
+          </select>
         </label>
 
         <div className="spacer" />

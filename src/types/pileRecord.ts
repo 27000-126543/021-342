@@ -9,6 +9,18 @@ export interface ProjectInfo {
   reportNo: string
 }
 
+export interface ArchiveBatch {
+  id: string
+  batchName: string
+  reportDate: string
+  remarks: string
+  dateFrom: string
+  dateTo: string
+  pileNos: string[]
+  pileIds: string[]
+  exportedAt: string
+}
+
 export const defaultProjectInfo: ProjectInfo = {
   projectName: '',
   constructionUnit: '',
@@ -153,3 +165,29 @@ export const commonStrata = [
   '砂岩',
   '泥岩',
 ]
+
+export function naturalCompare(a: string, b: string): number {
+  const reg = /(\d+)|(\D+)/g
+  const aParts = a.match(reg) || [a]
+  const bParts = b.match(reg) || [b]
+  const len = Math.max(aParts.length, bParts.length)
+  for (let i = 0; i < len; i++) {
+    const ap = aParts[i] || ''
+    const bp = bParts[i] || ''
+    const an = parseInt(ap, 10)
+    const bn = parseInt(bp, 10)
+    if (!isNaN(an) && !isNaN(bn)) {
+      if (an !== bn) return an - bn
+    } else {
+      const cmp = ap.localeCompare(bp, 'zh-Hans-CN')
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
+export function naturalInRange(value: string, start: string, end: string): boolean {
+  if (start && naturalCompare(value, start) < 0) return false
+  if (end && naturalCompare(value, end) > 0) return false
+  return true
+}

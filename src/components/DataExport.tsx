@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
-import { PileRecord, ProjectInfo } from '../types/pileRecord'
-import { storageService } from '../services/storage'
+import { PileRecord, ProjectInfo, ArchiveBatch, naturalCompare, naturalInRange } from '../types/pileRecord'
+import { storageService, generateId } from '../services/storage'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import * as XLSX from 'xlsx'
@@ -9,18 +9,19 @@ import JSZip from 'jszip'
 interface DataExportProps {
   records: PileRecord[]
   projectInfo: ProjectInfo
+  onSaveArchiveBatch: (batch: ArchiveBatch) => void
 }
 
 type TabType = 'single' | 'concrete' | 'daily' | 'batch'
 
-function ProjectHeader({ info, title }: { info: ProjectInfo; title: string }) {
+function ProjectHeader({ info, title, batchTag }: { info: ProjectInfo; title: string; batchTag?: string }) {
   return (
     <div className="project-header">
       {info.projectName && (
         <div className="project-name">{info.projectName}</div>
       )}
       <div style={{ fontSize: '16px', fontWeight: 600, color: '#262626', marginBottom: '6px' }}>
-        {title}
+        {title}{batchTag ? ` · ${batchTag}` : ''}
       </div>
       <div className="project-meta">
         {info.constructionUnit && <span>施工单位：{info.constructionUnit}</span>}
@@ -32,30 +33,17 @@ function ProjectHeader({ info, title }: { info: ProjectInfo; title: string }) {
   )
 }
 
-function SignatureRow({ labels }: { labels: string[] }) {
-  return (
-    <div className="signature-row">
-      {labels.map(label => (
-        <div key={label} className="signature-item">
-          <div className="signature-label">{label}</div>
-          <div className="signature-line"></div>
-          <div className="signature-hint">签字</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function buildSinglePileHtml(r: PileRecord, info: ProjectInfo): string {
+function buildSinglePileHtml(r: PileRecord, info: ProjectInfo, batchTag?: string): string {
   const rockRows = r.strata
     .map((s, i) => `<tr><td style="padding:6px 8px;border:1px solid #d9d9d9;text-align:center;">${i + 1}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${s.depth || '-'}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${s.stratum || '-'}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${s.description || '-'}</td></tr>`)
     .join('')
   const siteLabel = info.siteEngineer ? `施工员（${info.siteEngineer}）` : '施工员'
   const supLabel = info.supervisionEngineer ? `监理工程师（${info.supervisionEngineer}）` : '监理工程师'
+  const titleHtml = batchTag ? `桩基施工记录 · ${batchTag}` : '桩基施工记录'
   return `
 <div style="width:794px;padding:30px;background:#fff;font-family:'Microsoft YaHei','微软雅黑',sans-serif;color:#333;font-size:13px;box-sizing:border-box;">
   ${info.projectName ? `<div style="text-align:center;font-size:18px;font-weight:700;margin-bottom:6px;">${info.projectName}</div>` : ''}
-  <div style="text-align:center;font-size:16px;font-weight:600;margin-bottom:6px;">桩基施工记录</div>
+  <div style="text-align:center;font-size:16px;font-weight:600;margin-bottom:6px;">${titleHtml}</div>
   <div style="display:flex;justify-content:space-between;font-size:12px;color:#595959;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1890ff;flex-wrap:wrap;gap:8px;">
     ${info.constructionUnit ? `<span>施工单位：${info.constructionUnit}</span>` : ''}
     ${info.supervisionUnit ? `<span>监理单位：${info.supervisionUnit}</span>` : ''}
@@ -82,6 +70,42 @@ function buildSinglePileHtml(r: PileRecord, info: ProjectInfo): string {
   <div style="display:flex;justify-content:space-around;margin-top:40px;padding-top:16px;border-top:1px solid #f0f0f0;">
     <div style="text-align:center;"><div>${siteLabel}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
     <div style="text-align:center;"><div>质检员</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
+    <div style="text-align:center;"><div>${supLabel}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
+  </div>
+</div>`
+}
+
+function buildBatchSummaryHtml(list: PileRecord[], info: ProjectInfo, batchInfo?: { batchName: string; reportDate: string; remarks: string }, dateRange?: { from: string; to: string }): string {
+  const totalVolume = list.reduce((s, r) => s + (parseFloat(r.concreteVolume) || 0), 0)
+  const rows = list
+    .slice()
+    .sort((a, b) => naturalCompare(a.pileNo, b.pileNo))
+    .map((r, i) => `<tr><td style="padding:6px 8px;border:1px solid #d9d9d9;text-align:center;">${i + 1}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.pileNo}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.drillDate}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.constructionTeam}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.machineType}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.actualPileDepth}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.rockEntryDepth}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.concreteGrade}</td><td style="padding:6px 8px;border:1px solid #d9d9d9;">${r.concreteVolume}</td></tr>`)
+    .join('')
+  const siteLabel = info.siteEngineer ? `施工员（${info.siteEngineer}）` : '施工员'
+  const techLabel = info.technicalDirector ? `技术负责人（${info.technicalDirector}）` : '技术负责人'
+  const supLabel = info.supervisionEngineer ? `监理工程师（${info.supervisionEngineer}）` : '监理工程师'
+  const batchTag = batchInfo?.batchName ? ` · ${batchInfo.batchName}` : ''
+  const dateStr = (dateRange?.from || '-') + ' 至 ' + (dateRange?.to || '-')
+  return `
+<div style="width:794px;padding:30px;background:#fff;font-family:'Microsoft YaHei','微软雅黑',sans-serif;color:#333;font-size:13px;box-sizing:border-box;">
+  ${info.projectName ? `<div style="text-align:center;font-size:18px;font-weight:700;margin-bottom:6px;">${info.projectName}</div>` : ''}
+  <div style="text-align:center;font-size:16px;font-weight:600;margin-bottom:6px;">批量单桩施工记录汇总表${batchTag}</div>
+  <div style="display:flex;justify-content:space-between;font-size:12px;color:#595959;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #1890ff;flex-wrap:wrap;gap:8px;">
+    ${info.constructionUnit ? `<span>施工单位：${info.constructionUnit}</span>` : ''}
+    ${info.supervisionUnit ? `<span>监理单位：${info.supervisionUnit}</span>` : ''}
+    <span>日期范围：${dateStr}</span>
+    ${batchInfo?.reportDate ? `<span>报验日期：${batchInfo.reportDate}</span>` : ''}
+  </div>
+  ${batchInfo?.remarks ? `<div style="background:#fffbe6;border:1px solid #ffe58f;padding:6px 10px;margin-bottom:12px;font-size:12px;color:#613400;">报验备注：${batchInfo.remarks}</div>` : ''}
+  <div style="font-weight:600;margin-bottom:8px;">共 ${list.length} 根桩，混凝土总方量：${totalVolume.toFixed(2)} m³</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">序号</th><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">桩号</th><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">日期</th><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">班组</th><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">钻机</th><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">桩长(m)</th><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">入岩(m)</th><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">等级</th><th style="padding:6px 4px;border:1px solid #d9d9d9;background:#fafafa;font-weight:500;">方量(m³)</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div style="display:flex;justify-content:space-around;margin-top:40px;padding-top:16px;border-top:1px solid #f0f0f0;">
+    <div style="text-align:center;"><div>${siteLabel}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
+    <div style="text-align:center;"><div>${techLabel}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
     <div style="text-align:center;"><div>${supLabel}</div><div style="width:110px;border-bottom:1px solid #999;margin:6px auto;"></div><div style="font-size:12px;color:#888;">签字</div></div>
   </div>
 </div>`
@@ -116,12 +140,12 @@ async function elementToPdf(element: HTMLElement, pdf: jsPDF, firstPage: boolean
   return true
 }
 
-async function recordToPdfBlob(r: PileRecord, info: ProjectInfo): Promise<Blob> {
+async function htmlToPdfBlob(html: string): Promise<Blob> {
   const tempDiv = document.createElement('div')
   tempDiv.style.position = 'absolute'
   tempDiv.style.left = '-9999px'
   tempDiv.style.top = '-9999px'
-  tempDiv.innerHTML = buildSinglePileHtml(r, info)
+  tempDiv.innerHTML = html
   document.body.appendChild(tempDiv)
   try {
     const pdf = new jsPDF('p', 'mm', 'a4')
@@ -132,7 +156,21 @@ async function recordToPdfBlob(r: PileRecord, info: ProjectInfo): Promise<Blob> 
   }
 }
 
-function DataExport({ records, projectInfo }: DataExportProps) {
+interface BatchInfoForm {
+  batchName: string
+  reportDate: string
+  remarks: string
+}
+
+function defaultBatchForm(): BatchInfoForm {
+  return {
+    batchName: '',
+    reportDate: new Date().toISOString().split('T')[0],
+    remarks: '',
+  }
+}
+
+function DataExport({ records, projectInfo, onSaveArchiveBatch }: DataExportProps) {
   const [activeTab, setActiveTab] = useState<TabType>('single')
   const [selectedPileId, setSelectedPileId] = useState<string>('')
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -145,11 +183,14 @@ function DataExport({ records, projectInfo }: DataExportProps) {
   const [batchPileEnd, setBatchPileEnd] = useState<string>('')
   const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set())
   const [isExporting, setIsExporting] = useState(false)
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [pendingExport, setPendingExport] = useState<'merged_pdf' | 'separate_zip' | 'excel' | null>(null)
+  const [batchForm, setBatchForm] = useState<BatchInfoForm>(defaultBatchForm())
   const previewWrapRef = useRef<HTMLDivElement>(null)
   const singlePileRef = useRef<HTMLDivElement>(null)
 
   const sortedRecords = useMemo(
-    () => [...records].sort((a, b) => a.pileNo.localeCompare(b.pileNo)),
+    () => [...records].sort((a, b) => naturalCompare(a.pileNo, b.pileNo)),
     [records],
   )
 
@@ -161,7 +202,7 @@ function DataExport({ records, projectInfo }: DataExportProps) {
   const dailyRecords = useMemo(
     () => records
       .filter(r => r.drillDate === selectedDate)
-      .sort((a, b) => a.pileNo.localeCompare(b.pileNo)),
+      .sort((a, b) => naturalCompare(a.pileNo, b.pileNo)),
     [records, selectedDate],
   )
 
@@ -170,11 +211,15 @@ function DataExport({ records, projectInfo }: DataExportProps) {
       if (batchDateFrom && r.drillDate < batchDateFrom) return false
       if (batchDateTo && r.drillDate > batchDateTo) return false
       if (batchPileKeyword && !r.pileNo.toLowerCase().includes(batchPileKeyword.toLowerCase())) return false
-      if (batchPileStart && r.pileNo < batchPileStart) return false
-      if (batchPileEnd && r.pileNo > batchPileEnd) return false
+      if (!naturalInRange(r.pileNo, batchPileStart, batchPileEnd)) return false
       return true
     })
   }, [sortedRecords, batchDateFrom, batchDateTo, batchPileKeyword, batchPileStart, batchPileEnd])
+
+  const selectedBatchRecords = useMemo(
+    () => sortedRecords.filter(r => selectedBatchIds.has(r.id)),
+    [sortedRecords, selectedBatchIds],
+  )
 
   const canExportSingle = activeTab === 'single' && !!selectedRecord
   const canExportConcrete = activeTab === 'concrete' && sortedRecords.length > 0
@@ -198,12 +243,19 @@ function DataExport({ records, projectInfo }: DataExportProps) {
     storageService.printPage()
   }
 
+  const getBatchTag = () => batchForm.batchName?.trim() || ''
+
   const getExportFileName = (): string => {
     const dateStr = new Date().toISOString().split('T')[0]
+    const timeStr = new Date().toTimeString().slice(0, 5).replace(':', '')
+    const tag = getBatchTag() ? `_${getBatchTag()}` : ''
     if (activeTab === 'single' && selectedRecord) return '单桩施工记录_' + selectedRecord.pileNo + '_' + dateStr
     if (activeTab === 'concrete') return '混凝土灌注记录_' + dateStr
     if (activeTab === 'daily') return '桩基施工日汇总表_' + selectedDate
-    if (activeTab === 'batch') return '批量单桩记录_' + (batchDateFrom || '起始') + '_' + (batchDateTo || '截止') + '_' + dateStr
+    if (activeTab === 'batch') {
+      const range = (batchDateFrom || '起始') + '_' + (batchDateTo || '截止')
+      return `批量单桩记录_${range}${tag}_${dateStr}_${timeStr}`
+    }
     return '桩基记录_' + dateStr
   }
 
@@ -244,54 +296,154 @@ function DataExport({ records, projectInfo }: DataExportProps) {
     }
   }
 
-  const handleBatchMergedPDF = async () => {
-    if (!canExportBatch) {
-      alert(getEmptyTip())
-      return
+  const buildConcreteSignExcelRows = () => {
+    const siteLabel = projectInfo.siteEngineer ? `施工员（${projectInfo.siteEngineer}）` : '施工员'
+    const techLabel = projectInfo.technicalDirector ? `技术负责人（${projectInfo.technicalDirector}）` : '技术负责人'
+    const supLabel = projectInfo.supervisionEngineer ? `监理工程师（${projectInfo.supervisionEngineer}）` : '监理工程师'
+    return [
+      [],
+      ['签字栏'],
+      [siteLabel, '', '', techLabel, '', '', supLabel, ''],
+      ['签字：__________', '', '', '签字：__________', '', '', '签字：__________', ''],
+    ]
+  }
+
+  const buildDailySignExcelRows = () => {
+    const techLabel = projectInfo.technicalDirector ? `技术负责人（${projectInfo.technicalDirector}）` : '技术负责人'
+    const supLabel = projectInfo.supervisionEngineer ? `监理工程师（${projectInfo.supervisionEngineer}）` : '监理工程师'
+    return [
+      [],
+      ['签字栏'],
+      ['记录员', '', '', techLabel, '', '', supLabel, ''],
+      ['签字：__________', '', '', '签字：__________', '', '', '签字：__________', ''],
+    ]
+  }
+
+  const buildBatchSignExcelRows = () => {
+    const siteLabel = projectInfo.siteEngineer ? `施工员（${projectInfo.siteEngineer}）` : '施工员'
+    const techLabel = projectInfo.technicalDirector ? `技术负责人（${projectInfo.technicalDirector}）` : '技术负责人'
+    const supLabel = projectInfo.supervisionEngineer ? `监理工程师（${projectInfo.supervisionEngineer}）` : '监理工程师'
+    return [
+      [],
+      ['签字栏'],
+      [siteLabel, '', '', techLabel, '', '', supLabel, ''],
+      ['签字：__________', '', '', '签字：__________', '', '', '签字：__________', ''],
+    ]
+  }
+
+  const saveArchiveBatchNow = (selectedList: PileRecord[]) => {
+    const batch: ArchiveBatch = {
+      id: generateId(),
+      batchName: batchForm.batchName.trim(),
+      reportDate: batchForm.reportDate,
+      remarks: batchForm.remarks.trim(),
+      dateFrom: batchDateFrom,
+      dateTo: batchDateTo,
+      pileNos: selectedList.map(r => r.pileNo),
+      pileIds: selectedList.map(r => r.id),
+      exportedAt: new Date().toISOString(),
     }
+    onSaveArchiveBatch(batch)
+    return batch
+  }
+
+  const handleBatchMergedPDF = async () => {
+    if (!canExportBatch) { alert(getEmptyTip()); return }
+    setPendingExport('merged_pdf')
+    setShowBatchModal(true)
+  }
+
+  const executeMergedPDF = async (withBatch: boolean) => {
+    if (!canExportBatch) return
     setIsExporting(true)
+    setShowBatchModal(false)
     try {
-      const list = sortedRecords.filter(r => selectedBatchIds.has(r.id))
+      const list = selectedBatchRecords
+      const batchInfo = withBatch ? batchForm : undefined
+      const dateRange = { from: batchDateFrom, to: batchDateTo }
+      const tag = withBatch ? getBatchTag() : ''
       const pdf = new jsPDF('p', 'mm', 'a4')
+      const summaryHtml = buildBatchSummaryHtml(list, projectInfo, batchInfo, dateRange)
+      const summaryDiv = document.createElement('div')
+      summaryDiv.style.position = 'absolute'
+      summaryDiv.style.left = '-9999px'
+      summaryDiv.style.top = '-9999px'
+      summaryDiv.innerHTML = summaryHtml
+      document.body.appendChild(summaryDiv)
+      try {
+        await elementToPdf(summaryDiv, pdf, true)
+      } finally {
+        document.body.removeChild(summaryDiv)
+      }
       for (let i = 0; i < list.length; i++) {
         const r = list[i]
+        const html = buildSinglePileHtml(r, projectInfo, tag)
         const tempDiv = document.createElement('div')
         tempDiv.style.position = 'absolute'
         tempDiv.style.left = '-9999px'
         tempDiv.style.top = '-9999px'
-        tempDiv.innerHTML = buildSinglePileHtml(r, projectInfo)
+        tempDiv.innerHTML = html
         document.body.appendChild(tempDiv)
         try {
-          await elementToPdf(tempDiv, pdf, i === 0)
+          await elementToPdf(tempDiv, pdf, false)
         } finally {
           document.body.removeChild(tempDiv)
         }
       }
-      pdf.save(getExportFileName() + '_合并版.pdf')
+      pdf.save(getExportFileName() + (withBatch ? '_合并版.pdf' : '_合并版.pdf'))
+      if (withBatch) saveArchiveBatchNow(list)
     } catch (err) {
       console.error('批量PDF导出失败：', err)
       alert('批量导出失败，请重试')
     } finally {
       setIsExporting(false)
+      setBatchForm(defaultBatchForm())
+      setPendingExport(null)
     }
   }
 
   const handleBatchSeparatePDFZip = async () => {
-    if (!canExportBatch) {
-      alert(getEmptyTip())
-      return
-    }
+    if (!canExportBatch) { alert(getEmptyTip()); return }
+    setPendingExport('separate_zip')
+    setShowBatchModal(true)
+  }
+
+  const executeSeparateZip = async (withBatch: boolean) => {
+    if (!canExportBatch) return
     setIsExporting(true)
+    setShowBatchModal(false)
     try {
-      const list = sortedRecords.filter(r => selectedBatchIds.has(r.id))
+      const list = selectedBatchRecords.slice().sort((a, b) => naturalCompare(a.pileNo, b.pileNo))
+      const batchInfo = withBatch ? batchForm : undefined
+      const tag = withBatch ? getBatchTag() : ''
+      const dateRange = { from: batchDateFrom, to: batchDateTo }
       const zip = new JSZip()
       const folder = zip.folder('单桩施工记录')
       for (let i = 0; i < list.length; i++) {
         const r = list[i]
-        const blob = await recordToPdfBlob(r, projectInfo)
+        const html = buildSinglePileHtml(r, projectInfo, tag)
+        const blob = await htmlToPdfBlob(html)
         const fileName = `${r.drillDate}_${r.pileNo}_单桩施工记录.pdf`
         folder?.file(fileName, blob)
       }
+      const summaryHtml = buildBatchSummaryHtml(list, projectInfo, batchInfo, dateRange)
+      const summaryBlob = await htmlToPdfBlob(summaryHtml)
+      const summaryName = `${batchDateFrom || '起始'}_${batchDateTo || '截止'}${tag ? '_' + tag : ''}_汇总表.pdf`
+      folder?.file(summaryName, summaryBlob)
+      const txtContent = [
+        '批量导出说明',
+        '==========================================',
+        `工程名称：${projectInfo.projectName || '-'}`,
+        `施工单位：${projectInfo.constructionUnit || '-'}`,
+        `监理单位：${projectInfo.supervisionUnit || '-'}`,
+        withBatch ? `报验批次：${batchForm.batchName}` : '',
+        withBatch ? `报验日期：${batchForm.reportDate}` : '',
+        withBatch ? `备注：${batchForm.remarks}` : '',
+        `施工日期范围：${dateRange.from || '-'} 至 ${dateRange.to || '-'}`,
+        `共 ${list.length} 根桩`,
+        `导出时间：${new Date().toLocaleString()}`,
+      ].filter(Boolean).join('\r\n')
+      folder?.file('导出说明.txt', txtContent)
       const zipBlob = await zip.generateAsync({ type: 'blob' })
       const url = URL.createObjectURL(zipBlob)
       const a = document.createElement('a')
@@ -301,63 +453,84 @@ function DataExport({ records, projectInfo }: DataExportProps) {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
+      if (withBatch) saveArchiveBatchNow(list)
     } catch (err) {
       console.error('分桩PDF打包失败：', err)
       alert('分桩打包失败，请重试')
     } finally {
       setIsExporting(false)
+      setBatchForm(defaultBatchForm())
+      setPendingExport(null)
     }
   }
 
   const handleBatchExcel = () => {
-    if (!canExportBatch) {
-      alert(getEmptyTip())
-      return
+    if (!canExportBatch) { alert(getEmptyTip()); return }
+    setPendingExport('excel')
+    setShowBatchModal(true)
+  }
+
+  const executeBatchExcel = (withBatch: boolean) => {
+    if (!canExportBatch) return
+    setShowBatchModal(false)
+    try {
+      const list = selectedBatchRecords.slice().sort((a, b) => naturalCompare(a.pileNo, b.pileNo))
+      const batchInfo = withBatch ? batchForm : undefined
+      const wb = XLSX.utils.book_new()
+      list.forEach(r => {
+        const safeName = r.pileNo.substring(0, 28).replace(/[\\/?*\[\]:]/g, '_')
+        const data = [
+          [projectInfo.projectName || '桩基施工记录'],
+          withBatch && batchInfo?.batchName ? ['报验批次：' + batchInfo.batchName] : [],
+          ['施工单位', projectInfo.constructionUnit, '监理单位', projectInfo.supervisionUnit, '报告编号', projectInfo.reportNo],
+          [],
+          ['桩号', r.pileNo, '', '钻孔日期', r.drillDate],
+          ['施工班组', r.constructionTeam, '', '记录员', r.recorder],
+          ['钻机类型', r.machineType, '', '钻机编号', r.machineNo],
+          ['设计桩径(mm)', r.designPileDiameter, '', '设计桩长(m)', r.designPileDepth],
+          ['实际桩长(m)', r.actualPileDepth, '', '入岩深度(m)', r.rockEntryDepth],
+          ['混凝土等级', r.concreteGrade, '', '方量(m3)', r.concreteVolume],
+          ['灌注开始', r.concreteStartDate + ' ' + r.concreteStartTime],
+          ['灌注结束', r.concreteEndDate + ' ' + r.concreteEndTime],
+          [],
+          ['地层变化记录'],
+          ['序号', '层底深度(m)', '地层名称', '描述'],
+          ...r.strata.map((s, i) => [i + 1, s.depth, s.stratum, s.description || '']),
+        ].filter(row => row.length > 0)
+        const ws = XLSX.utils.aoa_to_sheet(data)
+        XLSX.utils.book_append_sheet(wb, ws, safeName)
+      })
+      const totalVolume = list.reduce((s, r) => s + (parseFloat(r.concreteVolume) || 0), 0)
+      const signRows = buildBatchSignExcelRows()
+      const summary = [
+        [projectInfo.projectName || '批量单桩施工记录汇总表'],
+        batchInfo?.batchName ? ['报验批次：' + batchInfo.batchName] : [],
+        batchInfo?.reportDate ? ['报验日期：' + batchInfo.reportDate] : [],
+        batchInfo?.remarks ? ['备注：' + batchInfo.remarks] : [],
+        ['施工单位', projectInfo.constructionUnit, '监理单位', projectInfo.supervisionUnit],
+        ['导出时间', new Date().toLocaleString()],
+        ['日期范围', (batchDateFrom || '-') + ' 至 ' + (batchDateTo || '-')],
+        ['共', list.length + ' 根桩', '', '混凝土总方量(m3)', totalVolume.toFixed(2)],
+        [],
+        ['序号', '桩号', '桩径(mm)', '桩长(m)', '入岩(m)', '混凝土', '方量(m3)', '班组', '日期'],
+        ...list.map((r, i) => [i + 1, r.pileNo, r.designPileDiameter, r.actualPileDepth, r.rockEntryDepth, r.concreteGrade, r.concreteVolume, r.constructionTeam, r.drillDate]),
+        ...signRows,
+      ].filter(row => row.length > 0)
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), '汇总')
+      XLSX.writeFile(wb, getExportFileName() + '.xlsx')
+      if (withBatch) saveArchiveBatchNow(list)
+    } catch (err) {
+      console.error('Excel导出失败：', err)
+      alert('Excel导出失败，请重试')
+    } finally {
+      setBatchForm(defaultBatchForm())
+      setPendingExport(null)
     }
-    const wb = XLSX.utils.book_new()
-    const list = sortedRecords.filter(r => selectedBatchIds.has(r.id))
-    list.forEach(r => {
-      const safeName = r.pileNo.substring(0, 28).replace(/[\\/?*\[\]:]/g, '_')
-      const data = [
-        [projectInfo.projectName || '桩基施工记录'],
-        ['施工单位', projectInfo.constructionUnit, '监理单位', projectInfo.supervisionUnit, '报告编号', projectInfo.reportNo],
-        [],
-        ['桩号', r.pileNo, '', '钻孔日期', r.drillDate],
-        ['施工班组', r.constructionTeam, '', '记录员', r.recorder],
-        ['钻机类型', r.machineType, '', '钻机编号', r.machineNo],
-        ['设计桩径(mm)', r.designPileDiameter, '', '设计桩长(m)', r.designPileDepth],
-        ['实际桩长(m)', r.actualPileDepth, '', '入岩深度(m)', r.rockEntryDepth],
-        ['混凝土等级', r.concreteGrade, '', '方量(m3)', r.concreteVolume],
-        ['灌注开始', r.concreteStartDate + ' ' + r.concreteStartTime],
-        ['灌注结束', r.concreteEndDate + ' ' + r.concreteEndTime],
-        [],
-        ['地层变化记录'],
-        ['序号', '层底深度(m)', '地层名称', '描述'],
-        ...r.strata.map((s, i) => [i + 1, s.depth, s.stratum, s.description || '']),
-      ]
-      const ws = XLSX.utils.aoa_to_sheet(data)
-      XLSX.utils.book_append_sheet(wb, ws, safeName)
-    })
-    const totalVolume = list.reduce((s, r) => s + (parseFloat(r.concreteVolume) || 0), 0)
-    const summary = [
-      ['批量单桩施工记录汇总表'],
-      ['导出时间', new Date().toLocaleString()],
-      ['日期范围', (batchDateFrom || '-') + ' 至 ' + (batchDateTo || '-')],
-      ['共', list.length + ' 根桩', '', '混凝土总方量(m3)', totalVolume.toFixed(2)],
-      [],
-      ['序号', '桩号', '桩径(mm)', '桩长(m)', '入岩(m)', '混凝土', '方量(m3)', '班组', '日期'],
-      ...list.map((r, i) => [i + 1, r.pileNo, r.designPileDiameter, r.actualPileDepth, r.rockEntryDepth, r.concreteGrade, r.concreteVolume, r.constructionTeam, r.drillDate]),
-    ]
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), '汇总')
-    XLSX.writeFile(wb, getExportFileName() + '.xlsx')
   }
 
   const handleExportExcel = () => {
     if (activeTab === 'batch') return handleBatchExcel()
-    if (!canExport) {
-      alert(getEmptyTip())
-      return
-    }
+    if (!canExport) { alert(getEmptyTip()); return }
     const wb = XLSX.utils.book_new()
     if (activeTab === 'single' && selectedRecord) {
       const data = [
@@ -380,6 +553,7 @@ function DataExport({ records, projectInfo }: DataExportProps) {
       const ws = XLSX.utils.aoa_to_sheet(data)
       XLSX.utils.book_append_sheet(wb, ws, '单桩施工记录')
     } else if (activeTab === 'concrete') {
+      const signRows = buildConcreteSignExcelRows()
       const data = [
         [projectInfo.projectName || '混凝土灌注记录表'],
         ['施工单位', projectInfo.constructionUnit, '监理单位', projectInfo.supervisionUnit],
@@ -388,11 +562,13 @@ function DataExport({ records, projectInfo }: DataExportProps) {
         ...sortedRecords.map((r, i) => [i + 1, r.pileNo, r.concreteGrade, r.concreteVolume, r.concreteStartDate, r.concreteStartTime, r.concreteEndDate, r.concreteEndTime, r.constructionTeam]),
         [],
         ['合计', '', '', sortedRecords.reduce((s, r) => s + (parseFloat(r.concreteVolume) || 0), 0).toFixed(2), '', '', '', '', sortedRecords.length + '根桩'],
+        ...signRows,
       ]
       const ws = XLSX.utils.aoa_to_sheet(data)
       XLSX.utils.book_append_sheet(wb, ws, '混凝土灌注记录')
     } else if (activeTab === 'daily') {
       const totalVolume = dailyRecords.reduce((s, r) => s + (parseFloat(r.concreteVolume) || 0), 0).toFixed(2)
+      const signRows = buildDailySignExcelRows()
       const data = [
         [projectInfo.projectName || '桩基施工日汇总表'],
         ['施工单位', projectInfo.constructionUnit, '监理单位', projectInfo.supervisionUnit],
@@ -402,6 +578,7 @@ function DataExport({ records, projectInfo }: DataExportProps) {
         ...dailyRecords.map((r, i) => [i + 1, r.pileNo, r.machineType, r.machineNo, r.designPileDiameter, r.designPileDepth, r.actualPileDepth, r.rockEntryDepth, r.concreteGrade, r.concreteVolume, r.constructionTeam, r.recorder]),
         [],
         ['合计', '', '', '', '', '', '', '', '', totalVolume, '', dailyRecords.length + '根桩'],
+        ...signRows,
       ]
       const ws = XLSX.utils.aoa_to_sheet(data)
       XLSX.utils.book_append_sheet(wb, ws, '日汇总表')
@@ -694,7 +871,8 @@ function DataExport({ records, projectInfo }: DataExportProps) {
       <ProjectHeader info={projectInfo} title="批量导出单桩施工记录" />
       <div style={{ background: '#f6ffed', border: '1px solid #b7eb8f', padding: '10px 14px', borderRadius: '6px', marginBottom: '16px', fontSize: '13px' }}>
         <div>共 <strong>{batchCandidate.length}</strong> 根桩符合筛选条件，已勾选 <strong style={{ color: '#52c41a' }}>{selectedBatchIds.size}</strong> 根（全库共 {sortedRecords.length} 根）。
-          批量导出支持：① 合并 PDF（所有桩一页一份文件）；② 分桩 PDF 压缩包（每桩一份，文件名按日期+桩号命名）；③ Excel（每桩一个 Sheet + 汇总 Sheet）。
+          批量导出支持：① 合并PDF；② 分桩PDF包（内含汇总表）；③ Excel（每桩一个 Sheet + 汇总 Sheet + 签字栏）。
+          导出前可填写报验批次信息，台账中可按批次回看。
         </div>
       </div>
 
@@ -721,7 +899,8 @@ function DataExport({ records, projectInfo }: DataExportProps) {
           <label style={{ fontSize: '13px', color: '#595959' }}>桩号范围：</label>
           <input
             type="text"
-            placeholder="起始"
+            placeholder="如 ZK1"
+            title="自然排序比较：ZK1 到 ZK10 会正确包含中间编号"
             value={batchPileStart}
             onChange={e => setBatchPileStart(e.target.value)}
             style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px', width: '90px' }}
@@ -729,7 +908,8 @@ function DataExport({ records, projectInfo }: DataExportProps) {
           <span style={{ color: '#8c8c8c' }}>~</span>
           <input
             type="text"
-            placeholder="截止"
+            placeholder="如 ZK10"
+            title="自然排序比较：ZK1 到 ZK10 会正确包含中间编号"
             value={batchPileEnd}
             onChange={e => setBatchPileEnd(e.target.value)}
             style={{ padding: '5px 8px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px', width: '90px' }}
@@ -809,6 +989,22 @@ function DataExport({ records, projectInfo }: DataExportProps) {
     fontFamily: 'inherit',
     fontSize: '14px',
   })
+
+  const confirmExportWithBatch = () => {
+    if (!batchForm.batchName.trim()) {
+      alert('请填写报验批次名称')
+      return
+    }
+    if (pendingExport === 'merged_pdf') executeMergedPDF(true)
+    else if (pendingExport === 'separate_zip') executeSeparateZip(true)
+    else if (pendingExport === 'excel') executeBatchExcel(true)
+  }
+
+  const skipBatchExport = () => {
+    if (pendingExport === 'merged_pdf') executeMergedPDF(false)
+    else if (pendingExport === 'separate_zip') executeSeparateZip(false)
+    else if (pendingExport === 'excel') executeBatchExcel(false)
+  }
 
   return (
     <div className="export-container">
@@ -925,6 +1121,65 @@ function DataExport({ records, projectInfo }: DataExportProps) {
         {activeTab === 'daily' && renderDailySummary()}
         {activeTab === 'batch' && renderBatch()}
       </div>
+
+      {showBatchModal && (
+        <div className="modal-mask no-print" onClick={() => !isExporting && (setShowBatchModal(false), setPendingExport(null), setBatchForm(defaultBatchForm()))}>
+          <div className="modal-panel" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>📋 归档批次信息（可选）</h3>
+              <button className="modal-close" disabled={isExporting} onClick={() => { setShowBatchModal(false); setPendingExport(null); setBatchForm(defaultBatchForm()) }}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background: '#e6f7ff', border: '1px solid #91d5ff', padding: '10px 12px', borderRadius: '6px', marginBottom: '14px', fontSize: '13px', color: '#0050b3' }}>
+                填写后将在导出文件（汇总表标题、签字栏、文件名）中体现批次信息，并在台账中保存本次报验记录便于回看。
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <label style={{ width: '90px', fontSize: '13px', color: '#595959' }}>
+                    <span style={{ color: '#ff4d4f' }}>*</span> 报验批次：
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="如：第01批、5月上旬批次"
+                    value={batchForm.batchName}
+                    onChange={e => setBatchForm(prev => ({ ...prev, batchName: e.target.value }))}
+                    style={{ flex: 1, padding: '6px 10px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <label style={{ width: '90px', fontSize: '13px', color: '#595959' }}>报验日期：</label>
+                  <input
+                    type="date"
+                    value={batchForm.reportDate}
+                    onChange={e => setBatchForm(prev => ({ ...prev, reportDate: e.target.value }))}
+                    style={{ flex: 1, padding: '6px 10px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                  <label style={{ width: '90px', fontSize: '13px', color: '#595959', marginTop: '6px' }}>备注：</label>
+                  <textarea
+                    rows={3}
+                    placeholder="如：共36根，分两次报验；含试桩3根"
+                    value={batchForm.remarks}
+                    onChange={e => setBatchForm(prev => ({ ...prev, remarks: e.target.value }))}
+                    style={{ flex: 1, padding: '6px 10px', border: '1px solid #d9d9d9', borderRadius: '4px', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit' }}
+                  />
+                </div>
+                <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                  本次选择：<strong>{selectedBatchRecords.length}</strong> 根桩，日期范围：
+                  <strong>{batchDateFrom || '-'}</strong> 至 <strong>{batchDateTo || '-'}</strong>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" disabled={isExporting} onClick={skipBatchExport}>不填批次，直接导出</button>
+              <button className="btn btn-primary" disabled={isExporting} onClick={confirmExportWithBatch}>
+                {isExporting ? '⏳ 导出中...' : '填写批次并导出'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
