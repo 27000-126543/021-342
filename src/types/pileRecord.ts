@@ -1,0 +1,133 @@
+export interface StratumRecord {
+  depth: string
+  stratum: string
+  description?: string
+}
+
+export interface PileRecord {
+  id: string
+  pileNo: string
+  drillDate: string
+  drillStartTime: string
+  drillEndTime: string
+  machineType: string
+  machineNo: string
+  designPileDiameter: string
+  designPileDepth: string
+  actualPileDepth: string
+  strata: StratumRecord[]
+  rockEntryDepth: string
+  rockEntryTime: string
+  holeCleaningMethod: string
+  holeCleaningStartTime: string
+  holeCleaningEndTime: string
+  mudDensityBefore: string
+  mudDensityAfter: string
+  sedimentThickness: string
+  concreteGrade: string
+  concreteVolume: string
+  concreteStartDate: string
+  concreteStartTime: string
+  concreteEndDate: string
+  concreteEndTime: string
+  reinforcementCageLength: string
+  reinforcementCageSections: string
+  weldingMethod: string
+  constructionTeam: string
+  recorder: string
+  remarks: string
+  createdAt: string
+  updatedAt: string
+}
+
+export const defaultPileRecord: PileRecord = {
+  id: '',
+  pileNo: '',
+  drillDate: new Date().toISOString().split('T')[0],
+  drillStartTime: '',
+  drillEndTime: '',
+  machineType: '',
+  machineNo: '',
+  designPileDiameter: '',
+  designPileDepth: '',
+  actualPileDepth: '',
+  strata: [
+    { depth: '', stratum: '', description: '' },
+  ],
+  rockEntryDepth: '',
+  rockEntryTime: '',
+  holeCleaningMethod: '',
+  holeCleaningStartTime: '',
+  holeCleaningEndTime: '',
+  mudDensityBefore: '',
+  mudDensityAfter: '',
+  sedimentThickness: '',
+  concreteGrade: '',
+  concreteVolume: '',
+  concreteStartDate: '',
+  concreteStartTime: '',
+  concreteEndDate: '',
+  concreteEndTime: '',
+  reinforcementCageLength: '',
+  reinforcementCageSections: '',
+  weldingMethod: '',
+  constructionTeam: '',
+  recorder: '',
+  remarks: '',
+  createdAt: '',
+  updatedAt: '',
+}
+
+export const commonMachineTypes = [
+  '旋挖钻机',
+  '冲击钻机',
+  '回转钻机',
+  '长螺旋钻机',
+  '潜水钻机',
+  '冲孔桩机',
+  '人工挖孔',
+]
+
+export const commonConcreteGrades = [
+  'C25',
+  'C30',
+  'C35',
+  'C40',
+  'C45',
+  'C50',
+]
+
+export const commonHoleCleaningMethods = [
+  '正循环清孔',
+  '反循环清孔',
+  '抽浆法清孔',
+  '换浆法清孔',
+  '掏渣法清孔',
+  '喷射清孔',
+]
+
+export const commonWeldingMethods = [
+  '单面焊',
+  '双面焊',
+  '闪光对焊',
+  '机械连接',
+  '套筒连接',
+]
+
+export const commonStrata = [
+  '素填土',
+  '杂填土',
+  '粉质黏土',
+  '黏土',
+  '粉土',
+  '砂土',
+  '圆砾',
+  '卵石',
+  '强风化岩',
+  '中风化岩',
+  '微风化岩',
+  '花岗岩',
+  '石灰岩',
+  '砂岩',
+  '泥岩',
+]
